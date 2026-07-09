@@ -1,11 +1,124 @@
 document.addEventListener('DOMContentLoaded', () => {
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
-    const chatHistory = document.getElementById('chatHistory');
+    const chatHistoryEl = document.getElementById('chatHistory');
     const errorEl = document.getElementById('error');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    
+    // Sidebar elements
+    const sidebar = document.getElementById('sidebar');
+    const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const sidebarHistoryEl = document.getElementById('sidebarHistory');
 
-    // Store conversation history for the LLM
-    let messages = [];
+    // State
+    let messages = []; // Used for LLM context
+    let displayMessages = []; // Used for re-rendering UI (includes chartConfigs)
+    let currentSessionId = null;
+    let currentChatId = null;
+
+    // Load saved chats from localStorage
+    let savedChats = JSON.parse(localStorage.getItem('savedChats') || '{}');
+
+    function saveCurrentChat() {
+        if (!currentChatId) {
+            currentChatId = 'chat-' + Date.now();
+        }
+        
+        let title = "New Chat";
+        const firstUserMsg = displayMessages.find(m => m.role === 'user');
+        if (firstUserMsg) {
+            title = firstUserMsg.content.substring(0, 30);
+            if (firstUserMsg.content.length > 30) title += "...";
+        }
+
+        savedChats[currentChatId] = {
+            id: currentChatId,
+            title: title,
+            messages: messages,
+            displayMessages: displayMessages,
+            sessionId: currentSessionId,
+            timestamp: Date.now()
+        };
+        
+        localStorage.setItem('savedChats', JSON.stringify(savedChats));
+        renderSidebar();
+    }
+
+    function loadChat(chatId) {
+        if (savedChats[chatId]) {
+            currentChatId = chatId;
+            messages = [...savedChats[chatId].messages];
+            displayMessages = [...savedChats[chatId].displayMessages];
+            currentSessionId = savedChats[chatId].sessionId;
+            
+            chatHistoryEl.innerHTML = '';
+            
+            // Re-render greeting
+            const greetingDiv = document.createElement('div');
+            greetingDiv.className = 'message bot';
+            greetingDiv.innerHTML = '<div class="bubble markdown-content">Hello! I\'m your AI data visualization assistant. Please provide some data and ask me to create a chart!</div>';
+            chatHistoryEl.appendChild(greetingDiv);
+
+            // Re-render UI
+            displayMessages.forEach(msg => {
+                if (msg.role === 'user') {
+                    appendMessageUI('user', msg.content);
+                } else if (msg.role === 'assistant') {
+                    appendBotResponseUI(msg.content, msg.chartConfig);
+                }
+            });
+
+            renderSidebar();
+            scrollToBottom();
+            
+            if (window.innerWidth < 768) {
+                sidebar.classList.add('collapsed');
+            }
+        }
+    }
+
+    function startNewChat() {
+        currentChatId = null;
+        messages = [];
+        displayMessages = [];
+        currentSessionId = null;
+        
+        chatHistoryEl.innerHTML = '';
+        const greetingDiv = document.createElement('div');
+        greetingDiv.className = 'message bot';
+        greetingDiv.innerHTML = '<div class="bubble markdown-content">Hello! I\'m your AI data visualization assistant. Please provide some data and ask me to create a chart!</div>';
+        chatHistoryEl.appendChild(greetingDiv);
+        
+        renderSidebar();
+    }
+
+    function renderSidebar() {
+        sidebarHistoryEl.innerHTML = '';
+        const sortedChats = Object.values(savedChats).sort((a, b) => b.timestamp - a.timestamp);
+        
+        sortedChats.forEach(chat => {
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            if (chat.id === currentChatId) item.classList.add('active');
+            item.textContent = chat.title;
+            
+            item.addEventListener('click', () => {
+                loadChat(chat.id);
+            });
+            
+            sidebarHistoryEl.appendChild(item);
+        });
+    }
+
+    toggleSidebarBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+    });
+
+    newChatBtn.addEventListener('click', () => {
+        startNewChat();
+    });
 
     // Auto-resize textarea
     chatInput.addEventListener('input', function() {
@@ -18,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Handle Enter key (Shift+Enter for new line)
     chatInput.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -30,21 +142,75 @@ document.addEventListener('DOMContentLoaded', () => {
 
     sendBtn.addEventListener('click', sendMessage);
 
+    uploadBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        fileInput.value = '';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadMsg = `[Uploaded file: ${file.name}]`;
+        messages.push({ role: 'user', content: uploadMsg });
+        displayMessages.push({ role: 'user', content: uploadMsg });
+        appendMessageUI('user', uploadMsg);
+        
+        saveCurrentChat();
+
+        const typingId = 'typing-' + Date.now();
+        appendTypingIndicator(typingId);
+
+        try {
+            const response = await fetch('http://localhost:8000/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+            removeElement(typingId);
+
+            if (!response.ok) {
+                throw new Error(data.detail || 'Upload failed');
+            }
+
+            currentSessionId = data.session_id;
+            const rowCount = data.schema.row_count;
+            const columns = Object.keys(data.schema.columns).join(', ');
+
+            const botMsg = `Successfully loaded **${file.name}** (${rowCount} rows).\nDetected columns: \`${columns}\`\n\nWhat would you like to know or visualize about this dataset?`;
+            
+            messages.push({ role: 'assistant', content: botMsg });
+            displayMessages.push({ role: 'assistant', content: botMsg, chartConfig: null });
+            
+            appendBotResponseUI(botMsg, null);
+            saveCurrentChat();
+
+        } catch (error) {
+            console.error(error);
+            removeElement(typingId);
+            showError("Failed to upload file: " + error.message);
+        }
+    });
+
     async function sendMessage() {
         const text = chatInput.value.trim();
         if (!text) return;
 
-        // Reset input
         chatInput.value = '';
         chatInput.style.height = 'auto';
         sendBtn.disabled = true;
         errorEl.classList.add('hidden');
 
-        // Add user message to state and UI
         messages.push({ role: 'user', content: text });
-        appendMessage('user', text);
+        displayMessages.push({ role: 'user', content: text });
+        appendMessageUI('user', text);
+        saveCurrentChat();
 
-        // Add bot typing indicator
         const typingId = 'typing-' + Date.now();
         appendTypingIndicator(typingId);
 
@@ -52,27 +218,35 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('http://localhost:8000/generate-chart', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: messages })
+                body: JSON.stringify({ 
+                    messages: messages,
+                    session_id: currentSessionId
+                })
             });
 
             const responseData = await response.json();
-
-            // Remove typing indicator
             removeElement(typingId);
 
             if (!response.ok) {
                 throw new Error(responseData.detail || "Failed to get response from server.");
             }
 
-            // The response should have .message and optionally .chartConfig
-            const botMessage = responseData.message || "Here is your chart.";
+            let botMessage = responseData.message || "";
             const chartConfig = responseData.chartConfig;
 
-            // Save assistant message to history
-            messages.push({ role: 'assistant', content: botMessage });
+            if (botMessage.includes("Error executing SQL") || botMessage.includes("Catalog Error: Table with name temp_data/")) {
+                botMessage += "\n\n*(Note: It looks like the data file for this session is missing, possibly because the server restarted. Please re-upload your dataset!)*";
+            }
 
-            // Append bot message and chart
-            appendBotResponse(botMessage, chartConfig);
+            // We must update context exactly as backend expects, but the backend doesn't send the full conversation history back.
+            // It only sends the final text.
+            // Actually, backend app.py DOES NOT return the intermediate tool calls. It only returns the final message.
+            // So we just append the final message to `messages` array so the next turn works correctly.
+            messages.push({ role: 'assistant', content: botMessage });
+            displayMessages.push({ role: 'assistant', content: botMessage, chartConfig: chartConfig });
+
+            appendBotResponseUI(botMessage, chartConfig);
+            saveCurrentChat();
 
         } catch (error) {
             console.error("Chat error:", error);
@@ -81,16 +255,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function appendMessage(role, text) {
+    function appendMessageUI(role, text) {
         const msgDiv = document.createElement('div');
         msgDiv.className = `message ${role}`;
         
         const bubble = document.createElement('div');
         bubble.className = 'bubble';
-        bubble.textContent = text;
+        
+        if (role === 'user') {
+            bubble.textContent = text;
+        } else {
+            bubble.innerHTML = window.marked ? marked.parse(text) : text;
+        }
         
         msgDiv.appendChild(bubble);
-        chatHistory.appendChild(msgDiv);
+        chatHistoryEl.appendChild(msgDiv);
+        scrollToBottom();
+    }
+
+    function appendBotResponseUI(text, chartConfig) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message bot';
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        
+        if (text) {
+            const textNode = document.createElement('div');
+            textNode.className = 'markdown-content';
+            textNode.innerHTML = window.marked ? marked.parse(text) : text;
+            bubble.appendChild(textNode);
+        }
+
+        if (chartConfig) {
+            const chartWrapper = document.createElement('div');
+            chartWrapper.className = 'chart-wrapper';
+            
+            const canvas = document.createElement('canvas');
+            const canvasId = 'chart-' + Math.random().toString(36).substr(2, 9);
+            canvas.id = canvasId;
+            
+            chartWrapper.appendChild(canvas);
+            bubble.appendChild(chartWrapper);
+            
+            msgDiv.appendChild(bubble);
+            chatHistoryEl.appendChild(msgDiv);
+            
+            try {
+                // Wait for DOM
+                setTimeout(() => {
+                    new Chart(document.getElementById(canvasId), chartConfig);
+                }, 50);
+            } catch (err) {
+                console.error("Failed to render chart:", err);
+                const errDiv = document.createElement('div');
+                errDiv.style.color = 'red';
+                errDiv.textContent = 'Error rendering chart.';
+                bubble.appendChild(errDiv);
+            }
+        } else {
+            msgDiv.appendChild(bubble);
+            chatHistoryEl.appendChild(msgDiv);
+        }
+        
         scrollToBottom();
     }
 
@@ -104,60 +331,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const indicator = document.createElement('div');
         indicator.className = 'typing-indicator';
-        indicator.innerHTML = '<span></span><span></span><span></span>';
+        indicator.innerHTML = '<span></span><span></span>';
         
         bubble.appendChild(indicator);
         msgDiv.appendChild(bubble);
-        chatHistory.appendChild(msgDiv);
-        scrollToBottom();
-    }
-
-    function appendBotResponse(text, chartConfig) {
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'message bot';
-        
-        const bubble = document.createElement('div');
-        bubble.className = 'bubble';
-        
-        // Add text if exists
-        if (text) {
-            const textNode = document.createElement('div');
-            textNode.textContent = text;
-            bubble.appendChild(textNode);
-        }
-
-        // Add chart if config exists and is not null
-        if (chartConfig) {
-            const chartWrapper = document.createElement('div');
-            chartWrapper.className = 'chart-wrapper';
-            
-            const canvas = document.createElement('canvas');
-            const canvasId = 'chart-' + Date.now();
-            canvas.id = canvasId;
-            
-            chartWrapper.appendChild(canvas);
-            bubble.appendChild(chartWrapper);
-            
-            // Need to append to DOM before initializing Chart
-            msgDiv.appendChild(bubble);
-            chatHistory.appendChild(msgDiv);
-            
-            // Initialize chart
-            try {
-                new Chart(document.getElementById(canvasId), chartConfig);
-            } catch (err) {
-                console.error("Failed to render chart:", err);
-                const errDiv = document.createElement('div');
-                errDiv.style.color = 'red';
-                errDiv.style.marginTop = '10px';
-                errDiv.textContent = 'Error rendering chart configuration.';
-                bubble.appendChild(errDiv);
-            }
-        } else {
-            msgDiv.appendChild(bubble);
-            chatHistory.appendChild(msgDiv);
-        }
-        
+        chatHistoryEl.appendChild(msgDiv);
         scrollToBottom();
     }
 
@@ -169,7 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function scrollToBottom() {
-        chatHistory.scrollTop = chatHistory.scrollHeight;
+        chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
     }
 
     function showError(message) {
@@ -179,4 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
             errorEl.classList.add('hidden');
         }, 5000);
     }
+
+    // Initialize UI
+    renderSidebar();
 });

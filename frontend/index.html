@@ -3,38 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chart Generator</title>
+    <title>AI Data Assistant</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-    <div class="chat-container">
-        <header class="chat-header">
-            <h1>AI Chart Assistant</h1>
-            <p>Paste your data and ask for any visualization.</p>
-        </header>
-
-        <div class="chat-history" id="chatHistory">
-            <!-- Messages will be appended here -->
-            <div class="message bot">
-                <div class="bubble">
-                    Hello! I'm your AI data visualization assistant. Please provide some data and ask me to create a chart!
-                </div>
-            </div>
-        </div>
-
-        <div class="chat-input-area">
-            <div id="error" class="error-message hidden"></div>
-            <div class="input-wrapper">
-                <textarea id="chatInput" placeholder="Message the assistant... (e.g. Here is my data: [{'x':1}], create a bar chart)" rows="1"></textarea>
-                <button id="sendBtn" title="Send message">
-                    <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button id="newChatBtn" class="new-chat-btn">
+                    <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="18" width="18" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    <span>New Chat</span>
                 </button>
             </div>
-        </div>
+            <div class="sidebar-history" id="sidebarHistory">
+                <!-- History items injected here -->
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="top-bar">
+                <button id="toggleSidebarBtn" class="icon-btn" title="Toggle Sidebar">
+                    <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                </button>
+                <div class="header-title">
+                    <h1>AI Visualizer</h1>
+                </div>
+                <div class="placeholder-spacer"></div> <!-- To center the title -->
+            </div>
+            
+            <div class="chat-container">
+                <div class="chat-history" id="chatHistory">
+                    <div class="message bot">
+                        <div class="bubble markdown-content">
+Hello! I'm your AI data visualization assistant. Please provide some data and ask me to create a chart!
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-area">
+                    <div id="error" class="error-message hidden"></div>
+                    <div class="input-wrapper">
+                        <input type="file" id="fileInput" class="hidden" accept=".csv, .json, .xls, .xlsx">
+                        <button id="uploadBtn" title="Upload dataset (CSV, JSON, Excel)">
+                            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        </button>
+                        <textarea id="chatInput" placeholder="Message the assistant... (e.g. Show me a bar chart of sales by month)" rows="1"></textarea>
+                        <button id="sendBtn" title="Send message">
+                            <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                        </button>
+                    </div>
+                    <div class="footer-text">AI can make mistakes. Check important numbers.</div>
+                </div>
+            </div>
+        </main>
     </div>
-    
     <script src="app.js"></script>
 </body>
 </html>
