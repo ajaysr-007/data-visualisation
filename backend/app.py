@@ -245,13 +245,20 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
                                 if col_name not in result_df.columns:
                                     raise Exception(f"data_column '{col_name}' not found. Available columns: {list(result_df.columns)}")
                                 
-                                color = bg_colors[i % len(bg_colors)]
+                                data_list = result_df[col_name].tolist()
+                                
+                                if chart_type in ["pie", "doughnut"]:
+                                    color = [bg_colors[j % len(bg_colors)] for j in range(len(data_list))]
+                                    border_color = [c.replace('0.8', '1') for c in color]
+                                else:
+                                    color = bg_colors[i % len(bg_colors)]
+                                    border_color = color.replace('0.8', '1')
                                 
                                 ds = {
                                     "label": dc.get("label", col_name),
-                                    "data": result_df[col_name].tolist(),
+                                    "data": data_list,
                                     "backgroundColor": color,
-                                    "borderColor": color.replace('0.8', '1'),
+                                    "borderColor": border_color,
                                     "borderWidth": 1,
                                     "borderRadius": 8 if chart_type == "bar" else 0,
                                     "tension": 0.4 if chart_type == "line" else 0,
