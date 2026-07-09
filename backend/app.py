@@ -30,43 +30,37 @@ client = AzureOpenAI(
     api_version=api_version
 )
 
-class ChartRequest(BaseModel):
-    data: dict | list
-    request: str
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: list[Message]
 
 @app.post("/generate-chart")
-async def generate_chart(chart_request: ChartRequest):
+async def generate_chart(chat_request: ChatRequest):
     if not api_key:
         raise HTTPException(status_code=500, detail="Azure OpenAI API key not configured")
 
-    system_prompt = """You are a data visualization assistant.
-
-Given JSON data and the user's request, generate ONLY a valid Chart.js configuration object.
+    system_prompt = """You are an AI data visualization assistant.
+Respond to the user's requests in JSON format containing two keys: "message" (a string for your conversational text response) and "chartConfig" (a valid Chart.js configuration object, or null if you don't need to render a chart).
 
 Rules:
 - Return ONLY JSON.
-- No markdown.
-- No explanations.
-- No code fences.
+- No markdown code fences.
 - Output must be directly parsable by JSON.parse().
-- Never return JavaScript.
-- Never return text before or after JSON."""
-
-    user_prompt = f"""JSON Data:
-{json.dumps(chart_request.data)}
-
-User Request:
-{chart_request.request}
-
-Return only the Chart.js configuration JSON."""
+- Never return JavaScript code.
+- If the user provides data and asks for a chart, respond naturally in "message" and provide the Chart.js config in "chartConfig".
+- If no chart is needed, set "chartConfig" to null."""
 
     try:
+        messages = [{"role": "system", "content": system_prompt}]
+        for m in chat_request.messages:
+            messages.append({"role": m.role, "content": m.content})
+
         response = client.chat.completions.create(
             model=deployment_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=messages,
             temperature=0,
         )
         
@@ -83,11 +77,11 @@ Return only the Chart.js configuration JSON."""
         output = output.strip()
 
         try:
-            chart_config = json.loads(output)
+            parsed_output = json.loads(output)
         except json.JSONDecodeError:
             raise HTTPException(status_code=500, detail=f"Failed to parse model output as JSON. Output was: {output}")
 
-        return {"chartConfig": chart_config}
+        return parsed_output
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

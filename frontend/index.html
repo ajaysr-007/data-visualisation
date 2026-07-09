@@ -9,40 +9,30 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>AI Chart Generator</h1>
-            <p>Paste your JSON data and ask for a chart.</p>
+    <div class="chat-container">
+        <header class="chat-header">
+            <h1>AI Chart Assistant</h1>
+            <p>Paste your data and ask for any visualization.</p>
         </header>
 
-        <main>
-            <div class="input-section">
-                <div class="form-group">
-                    <label for="jsonInput">JSON Data</label>
-                    <textarea id="jsonInput" placeholder='[{"month": "Jan", "sales": 100}, {"month": "Feb", "sales": 150}]'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label for="chartRequest">Chart Request</label>
-                    <input type="text" id="chartRequest" value="Create a chart from this data" placeholder="e.g. Create a bar chart showing sales by month">
-                </div>
-
-                <button id="generateBtn">Generate Chart</button>
-            </div>
-
-            <div class="output-section">
-                <div id="loading" class="hidden">
-                    <div class="spinner"></div>
-                    <p>Generating chart with GPT-4o...</p>
-                </div>
-                
-                <div id="error" class="error-message hidden"></div>
-                
-                <div class="canvas-container">
-                    <canvas id="myChart"></canvas>
+        <div class="chat-history" id="chatHistory">
+            <!-- Messages will be appended here -->
+            <div class="message bot">
+                <div class="bubble">
+                    Hello! I'm your AI data visualization assistant. Please provide some data and ask me to create a chart!
                 </div>
             </div>
-        </main>
+        </div>
+
+        <div class="chat-input-area">
+            <div id="error" class="error-message hidden"></div>
+            <div class="input-wrapper">
+                <textarea id="chatInput" placeholder="Message the assistant... (e.g. Here is my data: [{'x':1}], create a bar chart)" rows="1"></textarea>
+                <button id="sendBtn" title="Send message">
+                    <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="20" width="20" xmlns="http://www.w3.org/2000/svg"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
     </div>
     
     <script src="app.js"></script>
