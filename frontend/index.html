@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chart Generator</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Chart Generator</h1>
+            <p>Paste your JSON data and ask for a chart.</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <div class="form-group">
+                    <label for="jsonInput">JSON Data</label>
+                    <textarea id="jsonInput" placeholder='[{"month": "Jan", "sales": 100}, {"month": "Feb", "sales": 150}]'></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="chartRequest">Chart Request</label>
+                    <input type="text" id="chartRequest" value="Create a chart from this data" placeholder="e.g. Create a bar chart showing sales by month">
+                </div>
+
+                <button id="generateBtn">Generate Chart</button>
+            </div>
+
+            <div class="output-section">
+                <div id="loading" class="hidden">
+                    <div class="spinner"></div>
+                    <p>Generating chart with GPT-4o...</p>
+                </div>
+                
+                <div id="error" class="error-message hidden"></div>
+                
+                <div class="canvas-container">
+                    <canvas id="myChart"></canvas>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
