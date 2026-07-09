@@ -98,7 +98,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "render_chart",
-            "description": "Create a visualization. Call this when the user asks for a chart. If no active dataset exists, use the raw_data parameter instead of sql.",
+            "description": "Create a visualization. Call this when the user asks for a chart. If no active dataset exists, use the raw_data parameter instead of sql. CALL THIS MULTIPLE TIMES IN A SINGLE RESPONSE to generate a dashboard.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -108,7 +108,7 @@ tools = [
                         "items": {"type": "object"},
                         "description": "Raw JSON array of objects. Use this ONLY if the user provided data in their chat message."
                     },
-                    "chart_type": {"type": "string", "enum": ["bar", "line", "pie", "doughnut"]},
+                    "chart_type": {"type": "string", "enum": ["bar", "line", "pie", "doughnut", "radar", "polarArea"]},
                     "labels_column": {"type": "string", "description": "Column name or JSON key to use for X-axis labels"},
                     "data_columns": {
                         "type": "array", 
@@ -152,15 +152,16 @@ async def generate_chart(chat_request: ChatRequest):
     system_prompt = f"""You are an AI data visualization assistant and data engineer. You can converse naturally with the user.
 {dataset_context}
 
+CRITICAL DASHBOARD RULE: Whenever a user provides data and asks you to visualize it or create a chart, DO NOT ask them what type of chart they want. Instead, YOU MUST automatically generate a comprehensive dashboard of 4 to 5 DIFFERENT charts (e.g. bar, pie, doughnut, polarArea) by calling the `render_chart` tool multiple times consecutively in your response. Each chart should highlight a different slice or perspective of the data.
+
 When answering data questions, ALWAYS use the 'query_database' tool to get the factual numbers before answering (if a dataset is uploaded).
-When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask clarifying questions if you have enough data to make a reasonable guess. Just create the chart.
 """
 
     messages = [{"role": "system", "content": system_prompt}]
     for m in chat_request.messages:
         messages.append({"role": m.role, "content": m.content})
 
-    final_chart_config = None
+    final_chart_configs = []
     max_loops = 5
     loop_count = 0
 
@@ -170,7 +171,7 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
         response = client.chat.completions.create(
             model=deployment_name,
             messages=messages,
-            tools=tools, # Always pass tools now
+            tools=tools,
             temperature=0,
         )
         
@@ -229,7 +230,7 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
                             
                             if labels_column not in result_df.columns:
                                 raise Exception(f"labels_column '{labels_column}' not found. Available columns: {list(result_df.columns)}")
-                            labels = result_df[labels_column].tolist()
+                            labels = [None if pd.isna(x) else x for x in result_df[labels_column].tolist()]
                             
                             bg_colors = [
                                 'rgba(99, 102, 241, 0.8)',
@@ -245,9 +246,9 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
                                 if col_name not in result_df.columns:
                                     raise Exception(f"data_column '{col_name}' not found. Available columns: {list(result_df.columns)}")
                                 
-                                data_list = result_df[col_name].tolist()
+                                data_list = [None if pd.isna(x) else x for x in result_df[col_name].tolist()]
                                 
-                                if chart_type in ["pie", "doughnut"]:
+                                if chart_type in ["pie", "doughnut", "polarArea"]:
                                     color = [bg_colors[j % len(bg_colors)] for j in range(len(data_list))]
                                     border_color = [c.replace('0.8', '1') for c in color]
                                 else:
@@ -261,12 +262,12 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
                                     "borderColor": border_color,
                                     "borderWidth": 1,
                                     "borderRadius": 8 if chart_type == "bar" else 0,
-                                    "tension": 0.4 if chart_type == "line" else 0,
-                                    "fill": True if chart_type == "line" else False
+                                    "tension": 0.4 if chart_type in ["line", "radar"] else 0,
+                                    "fill": True if chart_type in ["line", "radar"] else False
                                 }
                                 datasets.append(ds)
                             
-                            final_chart_config = {
+                            chart_config = {
                                 "type": chart_type,
                                 "data": {
                                     "labels": labels,
@@ -288,7 +289,8 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
                                 }
                             }
                             
-                            tool_result = f"Successfully rendered chart. You can tell the user the chart has been displayed. Raw data used: {result_df.to_json(orient='records')}"
+                            final_chart_configs.append(chart_config)
+                            tool_result = f"Successfully rendered {chart_type} chart."
                             
                     except Exception as e:
                         tool_result = f"Error generating data: {str(e)}"
@@ -303,6 +305,6 @@ When asked to create a chart, ALWAYS use the 'render_chart' tool. Do NOT ask cla
                 })
         else:
             final_text = response_message.content
-            return {"message": final_text, "chartConfig": final_chart_config}
+            return {"message": final_text, "chartConfigs": final_chart_configs}
             
-    return {"message": "Reached maximum processing steps.", "chartConfig": final_chart_config}
+    return {"message": "Reached maximum processing steps.", "chartConfigs": final_chart_configs}

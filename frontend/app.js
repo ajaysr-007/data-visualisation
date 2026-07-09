@@ -66,7 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (msg.role === 'user') {
                     appendMessageUI('user', msg.content);
                 } else if (msg.role === 'assistant') {
-                    appendBotResponseUI(msg.content, msg.chartConfig);
+                    // Fallback for old saved chats that used chartConfig instead of chartConfigs array
+                    const configs = msg.chartConfigs || (msg.chartConfig ? [msg.chartConfig] : null);
+                    appendBotResponseUI(msg.content, configs);
                 }
             });
 
@@ -182,10 +184,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const rowCount = data.schema.row_count;
             const columns = Object.keys(data.schema.columns).join(', ');
 
-            const botMsg = `Successfully loaded **${file.name}** (${rowCount} rows).\nDetected columns: \`${columns}\`\n\nWhat would you like to know or visualize about this dataset?`;
+            const botMsg = `Successfully loaded **${file.name}** (${rowCount} rows).\nDetected columns: \`${columns}\`\n\nWhat would you like to visualize? Provide a prompt and I will automatically generate a beautiful dashboard!`;
             
             messages.push({ role: 'assistant', content: botMsg });
-            displayMessages.push({ role: 'assistant', content: botMsg, chartConfig: null });
+            displayMessages.push({ role: 'assistant', content: botMsg, chartConfigs: null });
             
             appendBotResponseUI(botMsg, null);
             saveCurrentChat();
@@ -232,20 +234,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let botMessage = responseData.message || "";
-            const chartConfig = responseData.chartConfig;
+            const chartConfigs = responseData.chartConfigs || [];
 
             if (botMessage.includes("Error executing SQL") || botMessage.includes("Catalog Error: Table with name temp_data/")) {
                 botMessage += "\n\n*(Note: It looks like the data file for this session is missing, possibly because the server restarted. Please re-upload your dataset!)*";
             }
 
-            // We must update context exactly as backend expects, but the backend doesn't send the full conversation history back.
-            // It only sends the final text.
-            // Actually, backend app.py DOES NOT return the intermediate tool calls. It only returns the final message.
-            // So we just append the final message to `messages` array so the next turn works correctly.
             messages.push({ role: 'assistant', content: botMessage });
-            displayMessages.push({ role: 'assistant', content: botMessage, chartConfig: chartConfig });
+            displayMessages.push({ role: 'assistant', content: botMessage, chartConfigs: chartConfigs });
 
-            appendBotResponseUI(botMessage, chartConfig);
+            appendBotResponseUI(botMessage, chartConfigs.length > 0 ? chartConfigs : null);
             saveCurrentChat();
 
         } catch (error) {
@@ -273,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scrollToBottom();
     }
 
-    function appendBotResponseUI(text, chartConfig) {
+    function appendBotResponseUI(text, chartConfigs) {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message bot';
         
@@ -287,37 +285,36 @@ document.addEventListener('DOMContentLoaded', () => {
             bubble.appendChild(textNode);
         }
 
-        if (chartConfig) {
-            const chartWrapper = document.createElement('div');
-            chartWrapper.className = 'chart-wrapper';
-            
-            const canvas = document.createElement('canvas');
-            const canvasId = 'chart-' + Math.random().toString(36).substr(2, 9);
-            canvas.id = canvasId;
-            
-            chartWrapper.appendChild(canvas);
-            bubble.appendChild(chartWrapper);
-            
-            msgDiv.appendChild(bubble);
-            chatHistoryEl.appendChild(msgDiv);
-            
-            try {
-                // Wait for DOM
-                setTimeout(() => {
-                    new Chart(document.getElementById(canvasId), chartConfig);
-                }, 50);
-            } catch (err) {
-                console.error("Failed to render chart:", err);
-                const errDiv = document.createElement('div');
-                errDiv.style.color = 'red';
-                errDiv.textContent = 'Error rendering chart.';
-                bubble.appendChild(errDiv);
-            }
-        } else {
-            msgDiv.appendChild(bubble);
-            chatHistoryEl.appendChild(msgDiv);
+        if (chartConfigs && Array.isArray(chartConfigs)) {
+            // Loop through all generated charts
+            chartConfigs.forEach(config => {
+                const chartWrapper = document.createElement('div');
+                chartWrapper.className = 'chart-wrapper';
+                
+                const canvas = document.createElement('canvas');
+                const canvasId = 'chart-' + Math.random().toString(36).substr(2, 9);
+                canvas.id = canvasId;
+                
+                chartWrapper.appendChild(canvas);
+                bubble.appendChild(chartWrapper);
+                
+                try {
+                    // Render chart
+                    setTimeout(() => {
+                        new Chart(document.getElementById(canvasId), config);
+                    }, 50);
+                } catch (err) {
+                    console.error("Failed to render chart:", err);
+                    const errDiv = document.createElement('div');
+                    errDiv.style.color = 'red';
+                    errDiv.textContent = 'Error rendering chart.';
+                    bubble.appendChild(errDiv);
+                }
+            });
         }
         
+        msgDiv.appendChild(bubble);
+        chatHistoryEl.appendChild(msgDiv);
         scrollToBottom();
     }
 
